@@ -1,0 +1,108 @@
+name: Build Release
+
+on:
+  push:
+    branches: ['zuplo/*']
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-splicer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add wasm32-wasip1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.10.0'
+
+      - name: Install NPM packages
+        run: npm install
+
+      - name: Build splicer
+        run: make lib/spidermonkey-embedding-splicer.js
+
+      - name: Upload splicer
+        uses: actions/upload-artifact@v4
+        with:
+          name: splicer
+          path: lib/
+
+  build-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add wasm32-wasip1
+
+      - name: Install wasm-tools
+        run: cargo install wasm-tools
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.10.0'
+
+      - name: Install NPM packages
+        run: npm install
+
+      - name: Build release engine
+        run: |
+          npm run clean
+          npm run build:release
+
+      - name: Upload engine
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine
+          path: lib/starlingmonkey_embedding.wasm
+
+  package:
+    runs-on: ubuntu-latest
+    needs: [build-splicer, build-engine]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.10.0'
+
+      - name: Download splicer
+        uses: actions/download-artifact@v4
+        with:
+          name: splicer
+          path: lib/
+
+      - name: Download engine
+        uses: actions/download-artifact@v4
+        with:
+          name: engine
+          path: lib/
+
+      - name: List lib contents
+        run: ls -la lib/
+
+      - name: Upload complete lib
+        uses: actions/upload-artifact@v4
+        with:
+          name: componentize-js-lib
+          path: lib/
+          retention-days: 90
